@@ -1,0 +1,59 @@
+#!/usr/bin/env ruby
+
+lib = File.expand_path('../../lib', __FILE__)
+$LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
+
+require 'benchmark'
+require 'tty-spinner'
+require 'tty-table'
+
+require 'fastsheet'
+require 'roo'
+
+FILE = './second_file.xlsx'.freeze
+ROW = rand 9000
+N = 15
+
+options = {
+  hide_cursor: true,
+  format: :dots,
+  interval: 20,
+  clear: true
+}
+
+puts "Benchmark reading row №#{ROW} from `#{FILE}` #{N} times..."
+
+roo_time = Benchmark.measure('Roo') do
+  spinner = TTY::Spinner.new('[:spinner] :progress', options)
+  spinner.auto_spin
+  N.times do |i|
+    spinner.update(progress: "Roo: #{i + 1}/#{N} sheets opened ...")
+    Roo::Excelx.new(FILE).sheet(0).row(ROW)
+  end
+  spinner.stop
+end
+
+fastsheet_time = Benchmark.measure('Fastsheet') do
+  spinner = TTY::Spinner.new('[:spinner] :progress', options)
+  spinner.auto_spin
+  N.times do |i|
+    spinner.update(progress: "Fastsheet: #{i + 1}/#{N} sheets opened ...")
+    Xlsx.new(FILE).rows[ROW]
+  end
+  spinner.stop
+end
+
+table = TTY::Table.new(header: ['Reader', 'Real Time'])
+
+table << ['Roo', roo_time.real.round(4)]
+table << ['Fastsheet', fastsheet_time.real.round(4)]
+
+renderer = TTY::Table::Renderer::Unicode.new(table)
+
+renderer.alignments       = %i[center center]
+renderer.padding          = [0, 1, 0, 1]
+renderer.border.separator = :each_row
+
+puts renderer.render
+
+puts "Fastsheet is #{(roo_time.real / fastsheet_time.real).round} times faster"
