@@ -1,0 +1,13 @@
+[package]
+name = "fastsheet"
+version = "0.1.0"
+publish = false
+build = "build.rs"
+
+[lib]
+name = "fastsheet"
+crate-type = ["cdylib"]
+
+[dependencies]
+calamine = "0.11.8"
+libc = "0.2"

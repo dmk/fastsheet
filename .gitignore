@@ -1,0 +1,14 @@
+Makefile
+.yardoc
+.bundle/
+_yardoc/
+coverage/
+doc/
+pkg/
+spec/reports/
+tmp/
+**/target/
+**/*.so
+**/*.gem
+**/*.log
+**/*.lock
