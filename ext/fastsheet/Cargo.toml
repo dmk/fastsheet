@@ -9,5 +9,5 @@ name = "fastsheet"
 crate-type = ["cdylib"]
 
 [dependencies]
-calamine = "0.11.8"
+calamine = "0.16.1"
 libc = "0.2"
