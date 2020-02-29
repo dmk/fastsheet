@@ -22,6 +22,6 @@ Gem::Specification.new do |spec|
   spec.require_paths = ['lib']
   spec.extensions = %w[extconf.rb]
 
-  spec.add_development_dependency 'rake', '~>12.0.0'
+  spec.add_development_dependency 'rake', '~>13.0.1'
   spec.add_development_dependency 'pry', '~>0.10.4'
 end
