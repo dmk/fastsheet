@@ -1,5 +1,6 @@
 require 'mkmf'
 require 'rake'
+require 'rbconfig'
 
 abort unless have_library 'ruby'
 abort unless have_header  'ruby.h'
@@ -16,6 +17,9 @@ EOF
 $makefile_created = true
 
 Dir.chdir 'ext/fastsheet' do
+  # Ensure build.rs uses the same Ruby as this extconf
+  ENV['RUBY'] = RbConfig.ruby
+
   when_writing 'Building fastsheet...' do
     sh cargo, 'build', '--release'
   end

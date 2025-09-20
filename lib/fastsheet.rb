@@ -12,7 +12,12 @@ case RUBY_PLATFORM
   else 'so'
 end.tap do |lib_ext|
   # Load library.
-  lib = Fiddle.dlopen(File.expand_path("../../ext/fastsheet/target/release/libfastsheet.#{lib_ext}", __FILE__))
+  candidates = [
+    File.expand_path("../../ext/fastsheet/target/release/libfastsheet.#{lib_ext}", __FILE__),
+  ]
+  lib_path = candidates.find { |p| File.exist?(p) }
+  raise "fastsheet native library not found" unless lib_path
+  lib = Fiddle.dlopen(lib_path)
 
   # Invoke library entry point.
   Fiddle::Function.new(lib['Init_libfastsheet'], [], Fiddle::TYPE_VOIDP).call

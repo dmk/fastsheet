@@ -34,6 +34,13 @@ fn use_dylib(lib: Vec<u8>) {
 }
 
 fn main() {
+    // Build C shim that exposes Qnil/Qtrue/Qfalse and wrappers we need.
+    cc::Build::new()
+        .file("src/shim.c")
+        .include(String::from_utf8_lossy(&rbconfig("rubyhdrdir")).to_string())
+        .include(String::from_utf8_lossy(&rbconfig("rubyarchhdrdir")).to_string())
+        .compile("ruby_shim");
+
     let libdir = rbconfig("libdir");
 
     let libruby_static = rbconfig("LIBRUBY_A");
@@ -53,7 +60,7 @@ fn main() {
             let msg = "Error! Could not find LIBRUBY_A or RUBY_SO_NAME. \
             This means that no static, or dynamic libruby was found. \
             Possible solution: build a new Ruby with the `--enable-shared` configure opt.";
-            panic!(msg)
+            panic!("{}", msg)
         }
     }
 

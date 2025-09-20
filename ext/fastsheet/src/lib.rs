@@ -4,7 +4,7 @@ extern crate calamine;
 use std::ffi::{CString, CStr};
 use libc::{c_int, c_void, c_char, c_double, uintptr_t};
 
-use calamine::{Sheets, DataType};
+use calamine::{open_workbook_auto, Data, Reader};
 
 //
 // Prepare Ruby bindings
@@ -13,10 +13,12 @@ use calamine::{Sheets, DataType};
 // VALUE (pointer to a ruby object)
 type Value = uintptr_t;
 
-// Some ruby constant values
-const NIL: usize   = 0x08;
-const TRUE: usize  = 0x14;
-const FALSE: usize = 0x00;
+// Values from ruby shim
+extern "C" {
+    fn rb_shim_Qnil() -> Value;
+    fn rb_shim_Qtrue() -> Value;
+    fn rb_shim_Qfalse() -> Value;
+}
 
 // Load some Ruby API functions
 extern "C" {
@@ -36,7 +38,7 @@ extern "C" {
     fn rb_ary_push(array: Value, elem: Value) -> Value;
 
     // C data to Ruby
-    fn rb_int2big(num: c_int) -> Value;
+    fn rb_int2big(num: isize) -> Value;
     fn rb_float_new(num: c_double) -> Value;
     fn rb_utf8_str_new_cstr(str: *const c_char) -> Value;
 
@@ -68,13 +70,16 @@ pub fn rstr(string: Value) -> String {
 // Read the sheet
 unsafe fn read(this: Value, rb_file_name: Value) -> Value {
     let mut document =
-        Sheets::open(rstr(rb_file_name))
+        open_workbook_auto(rstr(rb_file_name))
         .expect("Cannot open file!");
 
     // Open first worksheet by default
     //
     // TODO: allow use different worksheets
-    let sheet = document.worksheet_range_by_index(0).unwrap();
+    let sheet = document
+        .worksheet_range_at(0)
+        .expect("No worksheets found")
+        .expect("Cannot read first worksheet");
 
     let rows = rb_ary_new();
 
@@ -84,21 +89,23 @@ unsafe fn read(this: Value, rb_file_name: Value) -> Value {
         for (_, c) in row.iter().enumerate() {
             rb_ary_push(
                 new_row,
-                match *c {
+                match c {
                     // vba error
-                    DataType::Error(_) => NIL,
-                    DataType::Empty => NIL,
-                    DataType::Float(ref f) => rb_float_new(*f as c_double),
-                    DataType::Int(ref i) => rb_int2big(*i as c_int),
-                    DataType::Bool(ref b) => if *b { TRUE } else { FALSE },
-                    DataType::String(ref s) => {
+                    Data::Error(_) => rb_shim_Qnil(),
+                    Data::Empty => rb_shim_Qnil(),
+                    Data::Float(f) => rb_float_new(*f as c_double),
+                    Data::Int(i) => rb_int2big(*i as isize),
+                    Data::Bool(b) => if *b { rb_shim_Qtrue() } else { rb_shim_Qfalse() },
+                    Data::String(s) => {
                         let st = s.trim();
                         if st.is_empty() {
-                            NIL
+                            rb_shim_Qnil()
                         } else {
                             rb_utf8_str_new_cstr(cstr(st).as_ptr())
                         }
                     }
+                    // date/time variants and others not explicitly supported -> nil for now
+                    _ => rb_shim_Qnil(),
                 }
             );
         }
@@ -111,13 +118,13 @@ unsafe fn read(this: Value, rb_file_name: Value) -> Value {
     rb_iv_set(
         this,
         cstr("@width").as_ptr(),
-        rb_int2big(sheet.width() as i32)
+        rb_int2big(sheet.width() as isize)
     );
 
     rb_iv_set(
         this,
         cstr("@height").as_ptr(),
-        rb_int2big(sheet.height() as i32)
+        rb_int2big(sheet.height() as isize)
     );
 
     rb_iv_set(

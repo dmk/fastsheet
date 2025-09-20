@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    fastsheet (0.1.0)
+    fastsheet (0.2.0)
 
 GEM
   remote: https://rubygems.org/

@@ -4,7 +4,7 @@ Fastest ruby gem for reading Excel documents.
 
 ## Installation
 
-**You should have rust installed to use this gem.**
+**You should have Rust installed to use this gem.** Tested with Ruby 3.2+.
 
 Add this line to your application's Gemfile:
 
@@ -53,7 +53,8 @@ sheet.each_row { |r| ... }
 sheet.each_column { |c| ... }
 ```
 
-That's all API for now. Feel free to [open an issue](http://github.com/dkkoval/fastsheet/issues) if you need more.
+That's all API for now. Dates and formula are currently returned as `nil`.
+Feel free to [open an issue](http://github.com/dkkoval/fastsheet/issues) if you need more.
 
 ## Contributing
 
