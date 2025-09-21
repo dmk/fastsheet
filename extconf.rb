@@ -1,5 +1,4 @@
 require 'mkmf'
-require 'rake'
 require 'rbconfig'
 
 abort unless have_library 'ruby'
@@ -20,7 +19,6 @@ Dir.chdir 'ext/fastsheet' do
   # Ensure build.rs uses the same Ruby as this extconf
   ENV['RUBY'] = RbConfig.ruby
 
-  when_writing 'Building fastsheet...' do
-    sh cargo, 'build', '--release'
-  end
+  puts 'Building fastsheet...'
+  system(cargo, 'build', '--release') || abort('cargo build failed')
 end

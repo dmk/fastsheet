@@ -17,10 +17,11 @@ end.tap do |lib_ext|
   ]
   lib_path = candidates.find { |p| File.exist?(p) }
   raise "fastsheet native library not found" unless lib_path
-  lib = Fiddle.dlopen(lib_path)
+  # Keep handle alive for the entire process lifetime to avoid dlclose issues
+  FASTSHEET_LIB_HANDLE = Fiddle.dlopen(lib_path)
 
-  # Invoke library entry point.
-  Fiddle::Function.new(lib['Init_libfastsheet'], [], Fiddle::TYPE_VOIDP).call
+  # Invoke library entry point (void)
+  Fiddle::Function.new(FASTSHEET_LIB_HANDLE['Init_libfastsheet'], [], Fiddle::TYPE_VOID).call
 end
 
 require 'fastsheet/sheet'

@@ -27,18 +27,18 @@ module Fastsheet
       @rows.map { |r| r[n] }
     end
 
-    def columns
-      (0...@width).inject([]) do |cols, i|
-        cols.push column(i)
-      end
-    end
-
     def each_column
-      if block_given?
-        columns.each { |c| yield c }
-      else
-        columns.each
+      num_columns = @rows && !@rows.empty? ? (@rows.map(&:length).max || 0) : 0
+      enumerator = Enumerator.new do |y|
+        i = 0
+        while i < num_columns
+          y << column(i)
+          i += 1
+        end
       end
+
+      return enumerator unless block_given?
+      enumerator.each { |c| yield c }
     end
   end
 end

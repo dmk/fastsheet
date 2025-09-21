@@ -4,7 +4,7 @@ Fastest ruby gem for reading Excel documents.
 
 ## Installation
 
-**You should have Rust installed to use this gem.** Tested with Ruby 3.2+.
+**You should have Rust installed to build this gem.** Tested with Ruby 3.2+.
 
 Add this line to your application's Gemfile:
 
@@ -40,8 +40,6 @@ Get rows or columns:
 
 ```ruby
 sheet.rows
-sheet.columns
-
 sheet.row(42)
 sheet.column(1)
 ```
@@ -51,6 +49,7 @@ Iterators (returns enumerator if no block given):
 ```ruby
 sheet.each_row { |r| ... }
 sheet.each_column { |c| ... }
+sheet.each_column.to_a # materialize columns if you need them all
 ```
 
 That's all API for now. Dates and formula are currently returned as `nil`.
