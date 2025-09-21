@@ -14,3 +14,8 @@ group :development, :test do
   gem 'rubocop-rake', '~>0.7'
   gem 'rubocop-rspec', '~>3.7'
 end
+
+group :test do
+  # Generate XLSX files in tests to avoid relying on fixture files
+  gem 'caxlsx', '~> 4.2'
+end

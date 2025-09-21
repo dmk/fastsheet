@@ -12,4 +12,7 @@ RSpec.configure do |config|
   else
     config.filter_run_excluding integration: true
   end
+
+  # Load support files
+  Dir[File.expand_path('support/**/*.rb', __dir__)].each { |f| require f }
 end
