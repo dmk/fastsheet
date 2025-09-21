@@ -2,7 +2,7 @@ extern crate libc;
 extern crate calamine;
 
 use std::ffi::{CString, CStr};
-use libc::{c_int, c_void, c_char, c_double, uintptr_t};
+use libc::{c_int, c_void, c_char, c_double, uintptr_t, c_long, c_longlong, time_t};
 
 use calamine::{open_workbook_auto, Data, Reader};
 
@@ -35,12 +35,15 @@ extern "C" {
 
     // Array
     fn rb_ary_new() -> Value;
+    fn rb_ary_new_capa(capa: c_long) -> Value;
     fn rb_ary_push(array: Value, elem: Value) -> Value;
 
     // C data to Ruby
     fn rb_int2big(num: isize) -> Value;
+    fn rb_ll2inum(num: c_longlong) -> Value;
     fn rb_float_new(num: c_double) -> Value;
     fn rb_utf8_str_new_cstr(str: *const c_char) -> Value;
+    fn rb_time_new(sec: time_t, usec: c_long) -> Value;
 
     // Ruby string to C string
     fn rb_string_value_cstr(str: *const Value) -> *const c_char;
@@ -81,10 +84,10 @@ unsafe fn read(this: Value, rb_file_name: Value) -> Value {
         .expect("No worksheets found")
         .expect("Cannot read first worksheet");
 
-    let rows = rb_ary_new();
+    let rows = rb_ary_new_capa(sheet.height() as c_long);
 
     for row in sheet.rows() {
-        let new_row = rb_ary_new();
+        let new_row = rb_ary_new_capa(row.len() as c_long);
 
         for (_, c) in row.iter().enumerate() {
             rb_ary_push(
@@ -94,7 +97,7 @@ unsafe fn read(this: Value, rb_file_name: Value) -> Value {
                     Data::Error(_) => rb_shim_Qnil(),
                     Data::Empty => rb_shim_Qnil(),
                     Data::Float(f) => rb_float_new(*f as c_double),
-                    Data::Int(i) => rb_int2big(*i as isize),
+                    Data::Int(i) => rb_ll2inum(*i as c_longlong),
                     Data::Bool(b) => if *b { rb_shim_Qtrue() } else { rb_shim_Qfalse() },
                     Data::String(s) => {
                         let st = s.trim();
@@ -104,8 +107,24 @@ unsafe fn read(this: Value, rb_file_name: Value) -> Value {
                             rb_utf8_str_new_cstr(cstr(st).as_ptr())
                         }
                     }
-                    // date/time variants and others not explicitly supported -> nil for now
-                    _ => rb_shim_Qnil(),
+                    Data::DateTime(dt) => {
+                        // Prefer calamine's parsed datetime when available.
+                        if let Some(ndt) = dt.as_datetime() {
+                            let sec = ndt.timestamp() as time_t;
+                            let usec = ndt.timestamp_subsec_micros() as c_long;
+                            rb_time_new(sec, usec)
+                        } else {
+                            // Fallback to serial conversion.
+                            let mut days = dt.as_f64();
+                            if days >= 60.0 { days += 1.0; }
+                            let total_seconds = (days - 25569.0) * 86400.0f64;
+                            let sec = total_seconds.trunc() as i64 as time_t;
+                            let usec = ((total_seconds.fract() * 1_000_000.0).round() as i64) as c_long;
+                            rb_time_new(sec, usec)
+                        }
+                    },
+                    Data::DateTimeIso(s) => rb_utf8_str_new_cstr(cstr(&s).as_ptr()),
+                    Data::DurationIso(s) => rb_utf8_str_new_cstr(cstr(&s).as_ptr()),
                 }
             );
         }
@@ -131,6 +150,12 @@ unsafe fn read(this: Value, rb_file_name: Value) -> Value {
         this,
         cstr("@rows").as_ptr(),
         rows
+    );
+
+    rb_iv_set(
+        this,
+        cstr("@file_name").as_ptr(),
+        rb_utf8_str_new_cstr(rb_string_value_cstr(&rb_file_name))
     );
 
     this

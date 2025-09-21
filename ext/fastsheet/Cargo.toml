@@ -10,7 +10,7 @@ name = "fastsheet"
 crate-type = ["cdylib"]
 
 [dependencies]
-calamine = "0.30.1"
+calamine = { version = "0.30.1", features = ["dates"] }
 libc = "0.2"
 
 [build-dependencies]
