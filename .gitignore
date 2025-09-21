@@ -6,6 +6,7 @@ coverage/
 doc/
 pkg/
 spec/reports/
+vendor/bundle/
 tmp/
 **/target/
 **/*.so

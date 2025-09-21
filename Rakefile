@@ -37,3 +37,36 @@ task :test do
 end
 
 task default: [:test]
+
+namespace :lint do
+  desc 'Run Ruby lint (RuboCop)'
+  task :ruby do
+    sh 'bundle exec rubocop'
+  end
+
+  desc 'Run Rust lint (fmt --check, check, clippy)'
+  task :rust do
+    Dir.chdir('ext/fastsheet') do
+      sh 'cargo fmt -- --check'
+      sh 'cargo check --all'
+      sh 'cargo clippy --all-targets -- -D warnings'
+    end
+  end
+end
+
+desc 'Run all linters'
+task :lint do
+  Rake::Task['lint:ruby'].invoke
+  Rake::Task['lint:rust'].invoke
+end
+
+desc 'Format Ruby and Rust code'
+task :format do
+  # Ruby: RuboCop auto-correct
+  sh 'bundle exec rubocop -A'
+
+  # Rust: cargo fmt (write changes)
+  Dir.chdir('ext/fastsheet') do
+    sh 'cargo fmt'
+  end
+end

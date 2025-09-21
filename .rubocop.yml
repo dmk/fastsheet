@@ -1,0 +1,24 @@
+# RuboCop configuration
+plugins:
+  - rubocop-rspec
+  - rubocop-rake
+
+AllCops:
+  NewCops: enable
+  TargetRubyVersion: 3.2
+  Exclude:
+    - 'ext/**/target/**'
+    - 'ext/**/Cargo.lock'
+    - 'ext/**/build.rs'
+    - 'ext/**/src/**'
+    - 'vendor/**/*'
+
+Layout/LineLength:
+  Max: 120
+
+Metrics/BlockLength:
+  Exclude:
+    - 'spec/**/*'
+
+RSpec:
+  Enabled: true
