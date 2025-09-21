@@ -39,7 +39,6 @@ extern "C" {
     fn rb_iv_set(object: Value, name: *const c_char, value: Value) -> Value;
 
     // Array
-    fn rb_ary_new() -> Value;
     fn rb_ary_new_capa(capa: c_long) -> Value;
     fn rb_ary_push(array: Value, elem: Value) -> Value;
 
@@ -150,8 +149,9 @@ unsafe fn read(this: Value, rb_file_name: Value) -> Value {
                     Data::DateTime(dt) => {
                         // Prefer calamine's parsed datetime when available.
                         if let Some(ndt) = dt.as_datetime() {
-                            let sec = ndt.timestamp() as time_t;
-                            let usec = ndt.timestamp_subsec_micros() as c_long;
+                            let ndt_utc = ndt.and_utc();
+                            let sec = ndt_utc.timestamp() as time_t;
+                            let usec = ndt_utc.timestamp_subsec_micros() as c_long;
                             rb_time_new(sec, usec)
                         } else {
                             // Fallback to serial conversion.
