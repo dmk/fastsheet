@@ -126,7 +126,7 @@ unsafe fn read(this: Value, rb_file_name: Value) -> Value {
     for row in sheet.rows() {
         let new_row = rb_ary_new_capa(row.len() as c_long);
 
-        for (_, c) in row.iter().enumerate() {
+        for c in row.iter() {
             rb_ary_push(
                 new_row,
                 match c {
@@ -159,8 +159,8 @@ unsafe fn read(this: Value, rb_file_name: Value) -> Value {
                             rb_time_new(sec as time_t, usec as c_long)
                         }
                     }
-                    Data::DateTimeIso(s) => rb_utf8_str_new_cstr(cstr(&s).as_ptr()),
-                    Data::DurationIso(s) => rb_utf8_str_new_cstr(cstr(&s).as_ptr()),
+                    Data::DateTimeIso(s) => rb_utf8_str_new_cstr(cstr(s).as_ptr()),
+                    Data::DurationIso(s) => rb_utf8_str_new_cstr(cstr(s).as_ptr()),
                 },
             );
         }
@@ -198,6 +198,12 @@ unsafe fn read(this: Value, rb_file_name: Value) -> Value {
 //
 #[no_mangle]
 #[allow(non_snake_case)]
+/// # Safety
+///
+/// This function is called by the Ruby VM when the native library is loaded.
+/// It must only be invoked once during process lifetime and must uphold the
+/// expectations of the Ruby C API (thread-safety and correct registration of
+/// methods). The function assumes the Ruby VM has been initialized.
 pub unsafe extern "C" fn Init_libfastsheet() {
     let Fastsheet = rb_define_module(cstr("Fastsheet").as_ptr());
 
@@ -238,7 +244,7 @@ mod tests {
 
         // Check rounding behavior near microsecond boundaries
         let (sec, usec) = excel_serial_days_to_unix_seconds_usecs(25569.000001);
-        assert!(sec >= 86 && sec <= 87);
+        assert!((86..=87).contains(&sec));
         assert!(usec < 1_000_000);
 
         // Verify 1900 leap-day bug adjustment does not panic
