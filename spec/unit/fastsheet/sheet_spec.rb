@@ -7,11 +7,16 @@ RSpec.describe Fastsheet::Sheet do
   let(:rows) { [[1, 2], [3, 4], [5, 6]] }
 
   before do
-    allow_any_instance_of(described_class).to receive(:read!) do |instance, *_args|
-      instance.instance_variable_set(:@rows, rows.map(&:dup))
-      instance.instance_variable_set(:@height, rows.length)
-      instance.instance_variable_set(:@width, rows.first.length)
-      nil
+    allow(described_class).to receive(:new) do |*args|
+      instance = described_class.allocate
+      allow(instance).to receive(:read!) do |_file_name = nil|
+        instance.instance_variable_set(:@rows, rows.map(&:dup))
+        instance.instance_variable_set(:@height, rows.length)
+        instance.instance_variable_set(:@width, rows.first.length)
+        nil
+      end
+      instance.send(:initialize, *args)
+      instance
     end
   end
 

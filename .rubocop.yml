@@ -12,13 +12,21 @@ AllCops:
     - 'ext/**/build.rs'
     - 'ext/**/src/**'
     - 'vendor/**/*'
+    - 'bin/*' # for now
 
 Layout/LineLength:
   Max: 120
 
+RSpec/ExampleLength:
+  Enabled: false
+
+RSpec/MultipleExpectations:
+  Enabled: false
+
 Metrics/BlockLength:
   Exclude:
     - 'spec/**/*'
+    - 'bin/**/*'
 
 RSpec:
   Enabled: true

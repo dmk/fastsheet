@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 module Fastsheet
+  # Represents a parsed spreadsheet and provides row/column enumeration.
   class Sheet
     attr_reader :file_name,
                 :rows, :header,
@@ -13,8 +14,8 @@ module Fastsheet
       @header = @rows.shift if options[:header]
     end
 
-    def row(n)
-      @rows[n]
+    def row(index)
+      @rows[index]
     end
 
     def each_row(&)
@@ -25,23 +26,33 @@ module Fastsheet
       end
     end
 
-    def column(n)
-      @rows.map { |r| r[n] }
+    def column(index)
+      @rows.map { |row_values| row_values[index] }
     end
 
     def each_column(&)
-      num_columns = @rows && !@rows.empty? ? (@rows.map(&:length).max || 0) : 0
-      enumerator = Enumerator.new do |y|
-        i = 0
-        while i < num_columns
-          y << column(i)
-          i += 1
-        end
-      end
+      num_columns = compute_number_of_columns
+      enumerator = Enumerator.new { |yielder| yield_each_column(yielder, num_columns) }
 
       return enumerator unless block_given?
 
       enumerator.each(&)
+    end
+
+    private
+
+    def compute_number_of_columns
+      return 0 unless @rows && !@rows.empty?
+
+      @rows.map(&:length).max || 0
+    end
+
+    def yield_each_column(yielder, num_columns)
+      index = 0
+      while index < num_columns
+        yielder << column(index)
+        index += 1
+      end
     end
   end
 end

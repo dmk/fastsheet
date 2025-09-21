@@ -2,29 +2,43 @@
 
 require 'fiddle'
 
-case RUBY_PLATFORM
+module Fastsheet
+  # Handles dynamic loading and initialization of the native extension.
+  # Provides a stable handle to the loaded library and hides platform specifics.
+  module Native
+    module_function
 
-  # Windows
-when /win32/ then 'dll'
+    def library_extension
+      case RUBY_PLATFORM
+      when /win32/ then 'dll'
+      when /darwin/ then 'dylib'
+      else 'so'
+      end
+    end
 
-  # OS X
-when /darwin/ then 'dylib'
+    def locate_library_path
+      lib_ext = library_extension
+      candidates = [
+        File.expand_path("../../ext/fastsheet/target/release/libfastsheet.#{lib_ext}", __FILE__)
+      ]
+      candidates.find { |path| File.exist?(path) }
+    end
 
-  # Linux, BSD
-else 'so'
-end.tap do |lib_ext|
-  # Load library.
-  candidates = [
-    File.expand_path("../../ext/fastsheet/target/release/libfastsheet.#{lib_ext}", __FILE__)
-  ]
-  lib_path = candidates.find { |p| File.exist?(p) }
-  raise 'fastsheet native library not found' unless lib_path
+    def load!
+      lib_path = locate_library_path
+      raise 'fastsheet native library not found' unless lib_path
 
-  # Keep handle alive for the entire process lifetime to avoid dlclose issues
-  FASTSHEET_LIB_HANDLE = Fiddle.dlopen(lib_path)
+      @handle ||= Fiddle.dlopen(lib_path)
+      Fiddle::Function.new(@handle['Init_libfastsheet'], [], Fiddle::TYPE_VOID).call
+      @handle
+    end
 
-  # Invoke library entry point (void)
-  Fiddle::Function.new(FASTSHEET_LIB_HANDLE['Init_libfastsheet'], [], Fiddle::TYPE_VOID).call
+    def handle
+      @handle || load!
+    end
+  end
 end
+
+Fastsheet::Native.load!
 
 require 'fastsheet/sheet'

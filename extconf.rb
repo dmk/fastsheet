@@ -10,12 +10,11 @@ abort unless find_executable 'rustc'
 abort unless (cargo = find_executable(ENV.fetch('CARGO', 'cargo')))
 
 # HACK: rubygems requires Makefile with tasks above
-File.write 'Makefile', <<~EOF
+File.write 'Makefile', <<~MAKEFILE
   all:
   install:
   clean:
-EOF
-$makefile_created = true
+MAKEFILE
 
 Dir.chdir 'ext/fastsheet' do
   # Ensure build.rs uses the same Ruby as this extconf
