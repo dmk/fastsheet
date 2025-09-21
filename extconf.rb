@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require 'mkmf'
 require 'rbconfig'
 
@@ -5,13 +7,13 @@ abort unless have_library 'ruby'
 abort unless have_header  'ruby.h'
 
 abort unless find_executable 'rustc'
-abort unless cargo = find_executable(ENV.fetch('CARGO', 'cargo'))
+abort unless (cargo = find_executable(ENV.fetch('CARGO', 'cargo')))
 
 # HACK: rubygems requires Makefile with tasks above
-File.write 'Makefile', <<EOF
-all:
-install:
-clean:
+File.write 'Makefile', <<~EOF
+  all:
+  install:
+  clean:
 EOF
 $makefile_created = true
 

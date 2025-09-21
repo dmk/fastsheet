@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 require 'logger'
 
-@logger = Logger.new(STDOUT)
+@logger = Logger.new($stdout)
 
 desc 'Build native extension'
 task :build do
@@ -11,7 +13,7 @@ desc 'Remove files listed in `.gitignore`'
 task :clean do
   # `split` here removes leading `/` from file name if any
   File.read('.gitignore').each_line do |entry|
-    Dir.glob(entry.gsub(/(^\/|\n$)/, '')).each do |file_name|
+    Dir.glob(entry.gsub(%r{(^/|\n$)}, '')).each do |file_name|
       @logger.info("Removing `#{file_name}`")
       remove_entry(file_name)
     end
@@ -63,7 +65,7 @@ end
 desc 'Format Ruby and Rust code'
 task :format do
   # Ruby: RuboCop auto-correct
-  sh 'bundle exec rubocop -A'
+  sh 'bundle exec rubocop -A --fail-level E'
 
   # Rust: cargo fmt (write changes)
   Dir.chdir('ext/fastsheet') do

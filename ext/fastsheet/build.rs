@@ -29,8 +29,10 @@ fn use_static() {
 }
 
 fn use_dylib(lib: Vec<u8>) {
-    println!("cargo:rustc-link-lib=dylib={}",
-             String::from_utf8_lossy(&lib));
+    println!(
+        "cargo:rustc-link-lib=dylib={}",
+        String::from_utf8_lossy(&lib)
+    );
 }
 
 fn main() {
@@ -55,7 +57,7 @@ fn main() {
             } else {
                 use_dylib(libruby_so)
             }
-        },
+        }
         _ => {
             let msg = "Error! Could not find LIBRUBY_A or RUBY_SO_NAME. \
             This means that no static, or dynamic libruby was found. \
@@ -64,6 +66,8 @@ fn main() {
         }
     }
 
-    println!("cargo:rustc-link-search={}",
-             String::from_utf8_lossy(&libdir));
+    println!(
+        "cargo:rustc-link-search={}",
+        String::from_utf8_lossy(&libdir)
+    );
 }

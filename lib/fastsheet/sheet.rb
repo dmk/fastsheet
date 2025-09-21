@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Fastsheet
   class Sheet
     attr_reader :file_name,
@@ -15,9 +17,9 @@ module Fastsheet
       @rows[n]
     end
 
-    def each_row
+    def each_row(&)
       if block_given?
-        @rows.each { |r| yield r }
+        @rows.each(&)
       else
         @rows.each
       end
@@ -27,7 +29,7 @@ module Fastsheet
       @rows.map { |r| r[n] }
     end
 
-    def each_column
+    def each_column(&)
       num_columns = @rows && !@rows.empty? ? (@rows.map(&:length).max || 0) : 0
       enumerator = Enumerator.new do |y|
         i = 0
@@ -38,7 +40,8 @@ module Fastsheet
       end
 
       return enumerator unless block_given?
-      enumerator.each { |c| yield c }
+
+      enumerator.each(&)
     end
   end
 end

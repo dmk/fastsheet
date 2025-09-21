@@ -1,22 +1,25 @@
+# frozen_string_literal: true
+
 require 'fiddle'
 
 case RUBY_PLATFORM
 
   # Windows
-  when /win32/ then 'dll'
+when /win32/ then 'dll'
 
   # OS X
-  when /darwin/ then 'dylib'
+when /darwin/ then 'dylib'
 
   # Linux, BSD
-  else 'so'
+else 'so'
 end.tap do |lib_ext|
   # Load library.
   candidates = [
-    File.expand_path("../../ext/fastsheet/target/release/libfastsheet.#{lib_ext}", __FILE__),
+    File.expand_path("../../ext/fastsheet/target/release/libfastsheet.#{lib_ext}", __FILE__)
   ]
   lib_path = candidates.find { |p| File.exist?(p) }
-  raise "fastsheet native library not found" unless lib_path
+  raise 'fastsheet native library not found' unless lib_path
+
   # Keep handle alive for the entire process lifetime to avoid dlclose issues
   FASTSHEET_LIB_HANDLE = Fiddle.dlopen(lib_path)
 

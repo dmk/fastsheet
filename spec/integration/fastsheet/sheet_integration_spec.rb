@@ -1,7 +1,9 @@
+# frozen_string_literal: true
+
 require 'spec_helper'
 require 'fastsheet'
 
-RSpec.describe Fastsheet::Sheet, integration: true do
+RSpec.describe Fastsheet::Sheet, :integration do
   let(:xlsx_path) do
     File.expand_path('../../../examples/xlsx/file_example_XLS_10.xls', __dir__)
   end
@@ -39,5 +41,3 @@ RSpec.describe Fastsheet::Sheet, integration: true do
     expect(sheet.column(0)).to eq(sheet.rows.map { |r| r[0] })
   end
 end
-
-

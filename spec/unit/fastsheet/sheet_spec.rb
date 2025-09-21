@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require 'spec_helper'
 require 'fastsheet/sheet'
 
@@ -45,5 +47,3 @@ RSpec.describe Fastsheet::Sheet do
     expect(sheet.column(0)).to eq([1, 3, 5])
   end
 end
-
-

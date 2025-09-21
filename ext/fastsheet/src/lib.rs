@@ -1,8 +1,8 @@
-extern crate libc;
 extern crate calamine;
+extern crate libc;
 
-use std::ffi::{CString, CStr};
-use libc::{c_int, c_void, c_char, c_double, uintptr_t, c_long, c_longlong, time_t};
+use libc::{c_char, c_double, c_int, c_long, c_longlong, c_void, time_t, uintptr_t};
+use std::ffi::{CStr, CString};
 
 use calamine::{open_workbook_auto, Data, Reader};
 
@@ -28,7 +28,12 @@ extern "C" {
     // Modules and classes
     fn rb_define_module(name: *const c_char) -> Value;
     fn rb_define_class_under(outer: Value, name: *const c_char, superclass: Value) -> Value;
-    fn rb_define_method(class: Value, name: *const c_char, method: *const c_void, argc: c_int) -> Value;
+    fn rb_define_method(
+        class: Value,
+        name: *const c_char,
+        method: *const c_void,
+        argc: c_int,
+    ) -> Value;
 
     // Set instance variables
     fn rb_iv_set(object: Value, name: *const c_char, value: Value) -> Value;
@@ -107,9 +112,7 @@ pub(crate) fn excel_serial_days_to_unix_seconds_usecs(days: f64) -> (i64, i64) {
 
 // Read the sheet
 unsafe fn read(this: Value, rb_file_name: Value) -> Value {
-    let mut document =
-        open_workbook_auto(rstr(rb_file_name))
-        .expect("Cannot open file!");
+    let mut document = open_workbook_auto(rstr(rb_file_name)).expect("Cannot open file!");
 
     // Open first worksheet by default
     //
@@ -133,13 +136,17 @@ unsafe fn read(this: Value, rb_file_name: Value) -> Value {
                     Data::Empty => rb_shim_Qnil(),
                     Data::Float(f) => rb_float_new(*f as c_double),
                     Data::Int(i) => rb_ll2inum(*i as c_longlong),
-                    Data::Bool(b) => if *b { rb_shim_Qtrue() } else { rb_shim_Qfalse() },
-                    Data::String(s) => {
-                        match normalize_string_or_none(s) {
-                            None => rb_shim_Qnil(),
-                            Some(st) => rb_utf8_str_new_cstr(cstr(&st).as_ptr()),
+                    Data::Bool(b) => {
+                        if *b {
+                            rb_shim_Qtrue()
+                        } else {
+                            rb_shim_Qfalse()
                         }
                     }
+                    Data::String(s) => match normalize_string_or_none(s) {
+                        None => rb_shim_Qnil(),
+                        Some(st) => rb_utf8_str_new_cstr(cstr(&st).as_ptr()),
+                    },
                     Data::DateTime(dt) => {
                         // Prefer calamine's parsed datetime when available.
                         if let Some(ndt) = dt.as_datetime() {
@@ -151,40 +158,35 @@ unsafe fn read(this: Value, rb_file_name: Value) -> Value {
                             let (sec, usec) = excel_serial_days_to_unix_seconds_usecs(dt.as_f64());
                             rb_time_new(sec as time_t, usec as c_long)
                         }
-                    },
+                    }
                     Data::DateTimeIso(s) => rb_utf8_str_new_cstr(cstr(&s).as_ptr()),
                     Data::DurationIso(s) => rb_utf8_str_new_cstr(cstr(&s).as_ptr()),
-                }
+                },
             );
         }
 
         rb_ary_push(rows, new_row);
     }
 
-
     // Set instance variables
     rb_iv_set(
         this,
         cstr("@width").as_ptr(),
-        rb_int2big(sheet.width() as isize)
+        rb_int2big(sheet.width() as isize),
     );
 
     rb_iv_set(
         this,
         cstr("@height").as_ptr(),
-        rb_int2big(sheet.height() as isize)
+        rb_int2big(sheet.height() as isize),
     );
 
-    rb_iv_set(
-        this,
-        cstr("@rows").as_ptr(),
-        rows
-    );
+    rb_iv_set(this, cstr("@rows").as_ptr(), rows);
 
     rb_iv_set(
         this,
         cstr("@file_name").as_ptr(),
-        rb_utf8_str_new_cstr(rb_string_value_cstr(&rb_file_name))
+        rb_utf8_str_new_cstr(rb_string_value_cstr(&rb_file_name)),
     );
 
     this
@@ -196,25 +198,23 @@ unsafe fn read(this: Value, rb_file_name: Value) -> Value {
 //
 #[no_mangle]
 #[allow(non_snake_case)]
-pub unsafe extern fn Init_libfastsheet() {
-    let Fastsheet =
-        rb_define_module(cstr("Fastsheet").as_ptr());
+pub unsafe extern "C" fn Init_libfastsheet() {
+    let Fastsheet = rb_define_module(cstr("Fastsheet").as_ptr());
 
-    let Sheet =
-        rb_define_class_under(Fastsheet, cstr("Sheet").as_ptr(), rb_cObject);
+    let Sheet = rb_define_class_under(Fastsheet, cstr("Sheet").as_ptr(), rb_cObject);
 
     rb_define_method(
         Sheet,
         cstr("read!").as_ptr(),
         // Rust function as pointer to C function
         read as *const c_void,
-        1 as c_int
+        1 as c_int,
     );
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_string_or_none, excel_serial_days_to_unix_seconds_usecs};
+    use super::{excel_serial_days_to_unix_seconds_usecs, normalize_string_or_none};
 
     #[test]
     fn normalize_string_or_none_trims_and_filters() {
