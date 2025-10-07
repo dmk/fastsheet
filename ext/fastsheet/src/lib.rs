@@ -27,8 +27,6 @@ extern "C" {
 
     // Modules and classes
     fn rb_define_module(name: *const c_char) -> Value;
-    fn rb_const_get(klass: Value, id: Value) -> Value;
-    fn rb_intern(name: *const c_char) -> Value;
     fn rb_define_class_under(outer: Value, name: *const c_char, superclass: Value) -> Value;
     fn rb_define_method(
         class: Value,
@@ -160,7 +158,7 @@ unsafe fn read(this: Value, rb_file_name: Value, rb_sheet_selector: Value) -> Va
                             rb_shim_Qfalse()
                         }
                     }
-                    Data::String(s) => match normalize_string_or_none(&s) {
+                    Data::String(s) => match normalize_string_or_none(s) {
                         None => rb_shim_Qnil(),
                         Some(st) => rb_utf8_str_new_cstr(cstr(&st).as_ptr()),
                     },
@@ -177,8 +175,8 @@ unsafe fn read(this: Value, rb_file_name: Value, rb_sheet_selector: Value) -> Va
                             rb_time_new(sec as time_t, usec as c_long)
                         }
                     }
-                    Data::DateTimeIso(s) => rb_utf8_str_new_cstr(cstr(&s).as_ptr()),
-                    Data::DurationIso(s) => rb_utf8_str_new_cstr(cstr(&s).as_ptr()),
+                    Data::DateTimeIso(s) => rb_utf8_str_new_cstr(cstr(s).as_ptr()),
+                    Data::DurationIso(s) => rb_utf8_str_new_cstr(cstr(s).as_ptr()),
                 },
             );
         }
@@ -233,7 +231,10 @@ unsafe fn read(this: Value, rb_file_name: Value, rb_sheet_selector: Value) -> Va
             );
             // Find sheet index by name
             let sheet_names: Vec<_> = document.sheet_names().to_vec();
-            if let Some(pos) = sheet_names.iter().position(|name| name == &sheet_selector_str) {
+            if let Some(pos) = sheet_names
+                .iter()
+                .position(|name| name == &sheet_selector_str)
+            {
                 rb_iv_set(
                     this,
                     cstr("@sheet_index").as_ptr(),
@@ -243,11 +244,7 @@ unsafe fn read(this: Value, rb_file_name: Value, rb_sheet_selector: Value) -> Va
         }
     } else {
         // Default to first sheet
-        rb_iv_set(
-            this,
-            cstr("@sheet_index").as_ptr(),
-            rb_int2big(0),
-        );
+        rb_iv_set(this, cstr("@sheet_index").as_ptr(), rb_int2big(0));
         let sheet_names: Vec<_> = document.sheet_names().to_vec();
         if !sheet_names.is_empty() {
             rb_iv_set(
