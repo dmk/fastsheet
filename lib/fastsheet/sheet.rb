@@ -5,14 +5,30 @@ module Fastsheet
   class Sheet
     attr_reader :file_name,
                 :rows, :header,
-                :width, :height
+                :width, :height,
+                :sheet_name, :sheet_index
 
     def initialize(file_name, options = {})
-      # this method sets @rows, @height and @width
-      read!(file_name)
+      sheet_selector = options[:sheet]
+      sheet_selector = sheet_selector.to_s if sheet_selector.is_a?(Integer)
+
+      # this method sets @rows, @height, @width, @sheet_name, @sheet_index
+      begin
+        read!(file_name, sheet_selector)
+      rescue RuntimeError => e
+        case e.message
+        when /Sheet '(.+)' not found/
+          raise SheetNotFoundError, e.message
+        when /Sheet index (\d+) out of range/
+          raise SheetIndexError, e.message
+        else
+          raise
+        end
+      end
 
       @header = @rows.shift if options[:header]
     end
+
 
     def row(index)
       @rows[index]

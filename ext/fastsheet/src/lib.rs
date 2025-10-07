@@ -27,6 +27,8 @@ extern "C" {
 
     // Modules and classes
     fn rb_define_module(name: *const c_char) -> Value;
+    fn rb_const_get(klass: Value, id: Value) -> Value;
+    fn rb_intern(name: *const c_char) -> Value;
     fn rb_define_class_under(outer: Value, name: *const c_char, superclass: Value) -> Value;
     fn rb_define_method(
         class: Value,
@@ -109,17 +111,33 @@ pub(crate) fn excel_serial_days_to_unix_seconds_usecs(days: f64) -> (i64, i64) {
 // Functions to use in Ruby
 //
 
-// Read the sheet
-unsafe fn read(this: Value, rb_file_name: Value) -> Value {
+// Read the sheet with optional sheet selector
+unsafe fn read(this: Value, rb_file_name: Value, rb_sheet_selector: Value) -> Value {
     let mut document = open_workbook_auto(rstr(rb_file_name)).expect("Cannot open file!");
 
-    // Open first worksheet by default
-    //
-    // TODO: allow use different worksheets
-    let sheet = document
-        .worksheet_range_at(0)
-        .expect("No worksheets found")
-        .expect("Cannot read first worksheet");
+    let sheet = if rb_sheet_selector == rb_shim_Qnil() {
+        // Default: open first worksheet
+        document
+            .worksheet_range_at(0)
+            .expect("No worksheets found")
+            .expect("Cannot read first worksheet")
+    } else {
+        let sheet_selector_str = rstr(rb_sheet_selector);
+
+        // Try to parse as integer first (sheet index)
+        if let Ok(index) = sheet_selector_str.parse::<usize>() {
+            document
+                .worksheet_range_at(index)
+                .unwrap_or_else(|| panic!("Sheet index {} out of range", index))
+                .unwrap_or_else(|_| panic!("Cannot read sheet at index {}", index))
+        } else {
+            // Treat as sheet name
+            match document.worksheet_range(&sheet_selector_str) {
+                Ok(range) => range,
+                Err(_) => panic!("Sheet '{}' not found or cannot be read", sheet_selector_str),
+            }
+        }
+    };
 
     let rows = rb_ary_new_capa(sheet.height() as c_long);
 
@@ -142,7 +160,7 @@ unsafe fn read(this: Value, rb_file_name: Value) -> Value {
                             rb_shim_Qfalse()
                         }
                     }
-                    Data::String(s) => match normalize_string_or_none(s) {
+                    Data::String(s) => match normalize_string_or_none(&s) {
                         None => rb_shim_Qnil(),
                         Some(st) => rb_utf8_str_new_cstr(cstr(&st).as_ptr()),
                     },
@@ -159,8 +177,8 @@ unsafe fn read(this: Value, rb_file_name: Value) -> Value {
                             rb_time_new(sec as time_t, usec as c_long)
                         }
                     }
-                    Data::DateTimeIso(s) => rb_utf8_str_new_cstr(cstr(s).as_ptr()),
-                    Data::DurationIso(s) => rb_utf8_str_new_cstr(cstr(s).as_ptr()),
+                    Data::DateTimeIso(s) => rb_utf8_str_new_cstr(cstr(&s).as_ptr()),
+                    Data::DurationIso(s) => rb_utf8_str_new_cstr(cstr(&s).as_ptr()),
                 },
             );
         }
@@ -189,7 +207,78 @@ unsafe fn read(this: Value, rb_file_name: Value) -> Value {
         rb_utf8_str_new_cstr(rb_string_value_cstr(&rb_file_name)),
     );
 
+    // Store sheet information
+    if rb_sheet_selector != rb_shim_Qnil() {
+        let sheet_selector_str = rstr(rb_sheet_selector);
+        if let Ok(index) = sheet_selector_str.parse::<usize>() {
+            rb_iv_set(
+                this,
+                cstr("@sheet_index").as_ptr(),
+                rb_int2big(index as isize),
+            );
+            // Get sheet name from document
+            let sheet_names: Vec<_> = document.sheet_names().to_vec();
+            if index < sheet_names.len() {
+                rb_iv_set(
+                    this,
+                    cstr("@sheet_name").as_ptr(),
+                    rb_utf8_str_new_cstr(cstr(&sheet_names[index]).as_ptr()),
+                );
+            }
+        } else {
+            rb_iv_set(
+                this,
+                cstr("@sheet_name").as_ptr(),
+                rb_utf8_str_new_cstr(cstr(&sheet_selector_str).as_ptr()),
+            );
+            // Find sheet index by name
+            let sheet_names: Vec<_> = document.sheet_names().to_vec();
+            if let Some(pos) = sheet_names.iter().position(|name| name == &sheet_selector_str) {
+                rb_iv_set(
+                    this,
+                    cstr("@sheet_index").as_ptr(),
+                    rb_int2big(pos as isize),
+                );
+            }
+        }
+    } else {
+        // Default to first sheet
+        rb_iv_set(
+            this,
+            cstr("@sheet_index").as_ptr(),
+            rb_int2big(0),
+        );
+        let sheet_names: Vec<_> = document.sheet_names().to_vec();
+        if !sheet_names.is_empty() {
+            rb_iv_set(
+                this,
+                cstr("@sheet_name").as_ptr(),
+                rb_utf8_str_new_cstr(cstr(&sheet_names[0]).as_ptr()),
+            );
+        }
+    }
+
     this
+}
+
+// Get sheet names from workbook
+unsafe fn sheet_names(rb_file_name: Value) -> Value {
+    let document = open_workbook_auto(rstr(rb_file_name)).expect("Cannot open file!");
+    let sheet_names: Vec<_> = document.sheet_names().to_vec();
+
+    let rb_array = rb_ary_new_capa(sheet_names.len() as c_long);
+    for name in &sheet_names {
+        rb_ary_push(rb_array, rb_utf8_str_new_cstr(cstr(name).as_ptr()));
+    }
+
+    rb_array
+}
+
+// Get sheet count from workbook
+unsafe fn sheet_count(rb_file_name: Value) -> Value {
+    let document = open_workbook_auto(rstr(rb_file_name)).expect("Cannot open file!");
+    let count = document.sheet_names().len();
+    rb_int2big(count as isize)
 }
 
 // Init_libfastsheet symbol is an entrypoint for the lib
@@ -214,6 +303,30 @@ pub unsafe extern "C" fn Init_libfastsheet() {
         cstr("read!").as_ptr(),
         // Rust function as pointer to C function
         read as *const c_void,
+        2 as c_int,
+    );
+
+    // Class methods for sheet enumeration
+    extern "C" {
+        fn rb_define_singleton_method(
+            class: Value,
+            name: *const c_char,
+            method: *const c_void,
+            argc: c_int,
+        ) -> Value;
+    }
+
+    rb_define_singleton_method(
+        Sheet,
+        cstr("sheet_names").as_ptr(),
+        sheet_names as *const c_void,
+        1 as c_int,
+    );
+
+    rb_define_singleton_method(
+        Sheet,
+        cstr("sheet_count").as_ptr(),
+        sheet_count as *const c_void,
         1 as c_int,
     );
 }
