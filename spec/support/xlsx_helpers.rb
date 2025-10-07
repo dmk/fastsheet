@@ -25,29 +25,39 @@ module XlsxHelpers
   def build_temp_xlsx_multi_sheet
     Tempfile.create(['fastsheet_multi_spec', '.xlsx']).tap do |tmp|
       tmp.close
-      Axlsx::Package.new do |package|
-        # Sheet1 with basic data
-        package.workbook.add_worksheet(name: 'Sheet1') do |sheet|
-          sheet.add_row ['A1', 'B1']
-          sheet.add_row ['A2', 'B2']
-        end
+      create_multi_sheet_workbook(tmp.path)
+    end
+  end
 
-        # Data sheet with different structure
-        package.workbook.add_worksheet(name: 'Data') do |sheet|
-          sheet.add_row ['Name', 'Age', 'City']
-          sheet.add_row ['Alice', 30, 'NYC']
-          sheet.add_row ['Bob', 25, 'LA']
-        end
+  def create_multi_sheet_workbook(file_path)
+    Axlsx::Package.new do |package|
+      add_basic_sheet(package.workbook)
+      add_data_sheet(package.workbook)
+      add_numbers_sheet(package.workbook)
+      package.serialize(file_path)
+    end
+  end
 
-        # Numbers sheet
-        package.workbook.add_worksheet(name: 'Numbers') do |sheet|
-          sheet.add_row [1, 2, 3, 4]
-          sheet.add_row [5, 6, 7, 8]
-          sheet.add_row [9, 10, 11, 12]
-        end
+  def add_basic_sheet(workbook)
+    workbook.add_worksheet(name: 'Sheet1') do |sheet|
+      sheet.add_row %w[A1 B1]
+      sheet.add_row %w[A2 B2]
+    end
+  end
 
-        package.serialize(tmp.path)
-      end
+  def add_data_sheet(workbook)
+    workbook.add_worksheet(name: 'Data') do |sheet|
+      sheet.add_row %w[Name Age City]
+      sheet.add_row ['Alice', 30, 'NYC']
+      sheet.add_row ['Bob', 25, 'LA']
+    end
+  end
+
+  def add_numbers_sheet(workbook)
+    workbook.add_worksheet(name: 'Numbers') do |sheet|
+      sheet.add_row [1, 2, 3, 4]
+      sheet.add_row [5, 6, 7, 8]
+      sheet.add_row [9, 10, 11, 12]
     end
   end
 end

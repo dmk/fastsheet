@@ -9,26 +9,10 @@ module Fastsheet
                 :sheet_name, :sheet_index
 
     def initialize(file_name, options = {})
-      sheet_selector = options[:sheet]
-      sheet_selector = sheet_selector.to_s if sheet_selector.is_a?(Integer)
-
-      # this method sets @rows, @height, @width, @sheet_name, @sheet_index
-      begin
-        read!(file_name, sheet_selector)
-      rescue RuntimeError => e
-        case e.message
-        when /Sheet '(.+)' not found/
-          raise SheetNotFoundError, e.message
-        when /Sheet index (\d+) out of range/
-          raise SheetIndexError, e.message
-        else
-          raise
-        end
-      end
-
-      @header = @rows.shift if options[:header]
+      sheet_selector = normalize_sheet_selector(options[:sheet])
+      load_sheet_data(file_name, sheet_selector)
+      extract_header_if_requested(options[:header])
     end
-
 
     def row(index)
       @rows[index]
@@ -56,6 +40,33 @@ module Fastsheet
     end
 
     private
+
+    def normalize_sheet_selector(sheet)
+      return sheet.to_s if sheet.is_a?(Integer)
+
+      sheet
+    end
+
+    def load_sheet_data(file_name, sheet_selector)
+      read!(file_name, sheet_selector)
+    rescue RuntimeError => e
+      handle_sheet_loading_error(e)
+    end
+
+    def handle_sheet_loading_error(error)
+      case error.message
+      when /Sheet '(.+)' not found/
+        raise SheetNotFoundError, error.message
+      when /Sheet index (\d+) out of range/
+        raise SheetIndexError, error.message
+      else
+        raise
+      end
+    end
+
+    def extract_header_if_requested(header_option)
+      @header = @rows.shift if header_option
+    end
 
     def compute_number_of_columns
       return 0 unless @rows && !@rows.empty?

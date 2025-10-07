@@ -87,7 +87,7 @@ RSpec.describe Fastsheet::Sheet, :integration do
 
       expect(sheet.sheet_name).to eq('Data')
       expect(sheet.height).to eq(3)
-      expect(sheet.row(0)).to eq(['Name', 'Age', 'City'])
+      expect(sheet.row(0)).to eq(%w[Name Age City])
       expect(sheet.row(1)).to eq(['Alice', 30, 'NYC'])
     end
 
@@ -115,7 +115,7 @@ RSpec.describe Fastsheet::Sheet, :integration do
 
       expect(sheet.sheet_name).to eq('Sheet1')
       expect(sheet.sheet_index).to eq(0)
-      expect(sheet.row(0)).to eq(['A1', 'B1'])
+      expect(sheet.row(0)).to eq(%w[A1 B1])
     end
 
     it 'works with header option and sheet selection' do
@@ -123,23 +123,23 @@ RSpec.describe Fastsheet::Sheet, :integration do
       sheet = described_class.new(file.path, sheet: 'Data', header: true)
 
       expect(sheet.sheet_name).to eq('Data')
-      expect(sheet.header).to eq(['Name', 'Age', 'City'])
+      expect(sheet.header).to eq(%w[Name Age City])
       expect(sheet.rows.length).to eq(2)
       expect(sheet.row(0)).to eq(['Alice', 30, 'NYC'])
     end
 
     it 'raises SheetNotFoundError for invalid sheet name' do
       file = build_temp_xlsx_multi_sheet
-      expect {
+      expect do
         described_class.new(file.path, sheet: 'NonExistent')
-      }.to raise_error(Fastsheet::SheetNotFoundError, /Sheet 'NonExistent' not found/)
+      end.to raise_error(Fastsheet::SheetNotFoundError, /Sheet 'NonExistent' not found/)
     end
 
     it 'raises SheetIndexError for invalid sheet index' do
       file = build_temp_xlsx_multi_sheet
-      expect {
+      expect do
         described_class.new(file.path, sheet: 99)
-      }.to raise_error(Fastsheet::SheetIndexError, /Sheet index 99 out of range/)
+      end.to raise_error(Fastsheet::SheetIndexError, /Sheet index 99 out of range/)
     end
   end
 
@@ -148,7 +148,7 @@ RSpec.describe Fastsheet::Sheet, :integration do
       file = build_temp_xlsx_multi_sheet
       names = described_class.sheet_names(file.path)
 
-      expect(names).to eq(['Sheet1', 'Data', 'Numbers'])
+      expect(names).to eq(%w[Sheet1 Data Numbers])
     end
 
     it 'returns sheet count' do
