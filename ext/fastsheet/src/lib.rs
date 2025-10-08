@@ -24,6 +24,8 @@ extern "C" {
 extern "C" {
     // Object class
     static rb_cObject: Value;
+    // RuntimeError class
+    static rb_eRuntimeError: Value;
 
     // Modules and classes
     fn rb_define_module(name: *const c_char) -> Value;
@@ -51,6 +53,9 @@ extern "C" {
 
     // Ruby string to C string
     fn rb_string_value_cstr(str: *const Value) -> *const c_char;
+
+    // Exception raising
+    fn rb_raise(exception: Value, fmt: *const c_char);
 }
 
 //
@@ -115,24 +120,57 @@ unsafe fn read(this: Value, rb_file_name: Value, rb_sheet_selector: Value) -> Va
 
     let sheet = if rb_sheet_selector == rb_shim_Qnil() {
         // Default: open first worksheet
-        document
-            .worksheet_range_at(0)
-            .expect("No worksheets found")
-            .expect("Cannot read first worksheet")
+        match document.worksheet_range_at(0) {
+            Some(Ok(range)) => range,
+            Some(Err(_)) => {
+                rb_raise(
+                    rb_eRuntimeError,
+                    cstr("Cannot read first worksheet").as_ptr(),
+                );
+                return rb_shim_Qnil(); // This line won't be reached, but needed for type checking
+            }
+            None => {
+                rb_raise(rb_eRuntimeError, cstr("No worksheets found").as_ptr());
+                return rb_shim_Qnil(); // This line won't be reached, but needed for type checking
+            }
+        }
     } else {
         let sheet_selector_str = rstr(rb_sheet_selector);
 
         // Try to parse as integer first (sheet index)
         if let Ok(index) = sheet_selector_str.parse::<usize>() {
-            document
-                .worksheet_range_at(index)
-                .unwrap_or_else(|| panic!("Sheet index {} out of range", index))
-                .unwrap_or_else(|_| panic!("Cannot read sheet at index {}", index))
+            match document.worksheet_range_at(index) {
+                Some(Ok(range)) => range,
+                Some(Err(_)) => {
+                    rb_raise(
+                        rb_eRuntimeError,
+                        cstr(&format!("Cannot read sheet at index {}", index)).as_ptr(),
+                    );
+                    return rb_shim_Qnil(); // This line won't be reached, but needed for type checking
+                }
+                None => {
+                    rb_raise(
+                        rb_eRuntimeError,
+                        cstr(&format!("Sheet index {} out of range", index)).as_ptr(),
+                    );
+                    return rb_shim_Qnil(); // This line won't be reached, but needed for type checking
+                }
+            }
         } else {
             // Treat as sheet name
             match document.worksheet_range(&sheet_selector_str) {
                 Ok(range) => range,
-                Err(_) => panic!("Sheet '{}' not found or cannot be read", sheet_selector_str),
+                Err(_) => {
+                    rb_raise(
+                        rb_eRuntimeError,
+                        cstr(&format!(
+                            "Sheet '{}' not found or cannot be read",
+                            sheet_selector_str
+                        ))
+                        .as_ptr(),
+                    );
+                    return rb_shim_Qnil(); // This line won't be reached, but needed for type checking
+                }
             }
         }
     };
@@ -259,7 +297,7 @@ unsafe fn read(this: Value, rb_file_name: Value, rb_sheet_selector: Value) -> Va
 }
 
 // Get sheet names from workbook
-unsafe fn sheet_names(rb_file_name: Value) -> Value {
+unsafe fn sheet_names(_klass: Value, rb_file_name: Value) -> Value {
     let document = open_workbook_auto(rstr(rb_file_name)).expect("Cannot open file!");
     let sheet_names: Vec<_> = document.sheet_names().to_vec();
 
@@ -272,7 +310,7 @@ unsafe fn sheet_names(rb_file_name: Value) -> Value {
 }
 
 // Get sheet count from workbook
-unsafe fn sheet_count(rb_file_name: Value) -> Value {
+unsafe fn sheet_count(_klass: Value, rb_file_name: Value) -> Value {
     let document = open_workbook_auto(rstr(rb_file_name)).expect("Cannot open file!");
     let count = document.sheet_names().len();
     rb_int2big(count as isize)
