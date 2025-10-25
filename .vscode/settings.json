@@ -1,0 +1,6 @@
+{
+  "makefile.configureOnOpen": false,
+  "rust-analyzer.linkedProjects": [
+    "ext/fastsheet/Cargo.toml"
+  ]
+}

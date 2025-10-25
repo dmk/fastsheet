@@ -1,0 +1,7 @@
+---
+description: Git Branching
+alwaysApply: false
+---
+- Use format: type/description
+- Examples: feature/add-france-map, fix/runtime-error
+- Types: feature, fix, docs, refactor, test, chore, perf
