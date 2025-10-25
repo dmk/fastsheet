@@ -110,21 +110,47 @@ pub(crate) fn excel_serial_days_to_unix_seconds_usecs(days: f64) -> (i64, i64) {
 //
 
 // Read the sheet
-unsafe fn read(this: Value, rb_file_name: Value) -> Value {
+unsafe fn read(this: Value, rb_file_name: Value, rb_worksheet: Value) -> Value {
     let mut document = open_workbook_auto(rstr(rb_file_name)).expect("Cannot open file!");
 
-    // Open first worksheet by default
-    //
-    // TODO: allow use different worksheets
+    // Determine which worksheet to read
+    let worksheet_index = if rb_worksheet == rb_shim_Qnil() {
+        0 // Default to first worksheet
+    } else {
+        // Try to parse as integer first (worksheet index)
+        // If that fails, treat as string (worksheet name)
+        let worksheet_spec = rstr(rb_worksheet);
+        match worksheet_spec.parse::<usize>() {
+            Ok(index) => index,
+            Err(_) => {
+                // Look for worksheet by name
+                match document
+                    .sheet_names()
+                    .iter()
+                    .position(|name| name == &worksheet_spec)
+                {
+                    Some(index) => index,
+                    None => panic!("Worksheet '{}' not found", worksheet_spec),
+                }
+            }
+        }
+    };
+
     let sheet = document
-        .worksheet_range_at(0)
+        .worksheet_range_at(worksheet_index)
         .expect("No worksheets found")
-        .expect("Cannot read first worksheet");
+        .expect("Cannot read worksheet");
 
     let rows = rb_ary_new_capa(sheet.height() as c_long);
 
+    // Make rows reachable by the GC early via an instance variable
+    rb_iv_set(this, cstr("@rows").as_ptr(), rows);
+
     for row in sheet.rows() {
         let new_row = rb_ary_new_capa(row.len() as c_long);
+
+        // Ensure new_row is GC-reachable by inserting it into rows before filling
+        rb_ary_push(rows, new_row);
 
         for c in row.iter() {
             rb_ary_push(
@@ -149,9 +175,8 @@ unsafe fn read(this: Value, rb_file_name: Value) -> Value {
                     Data::DateTime(dt) => {
                         // Prefer calamine's parsed datetime when available.
                         if let Some(ndt) = dt.as_datetime() {
-                            let ndt_utc = ndt.and_utc();
-                            let sec = ndt_utc.timestamp() as time_t;
-                            let usec = ndt_utc.timestamp_subsec_micros() as c_long;
+                            let sec = ndt.and_utc().timestamp() as time_t;
+                            let usec = ndt.and_utc().timestamp_subsec_micros() as c_long;
                             rb_time_new(sec, usec)
                         } else {
                             // Fallback to serial conversion.
@@ -164,11 +189,9 @@ unsafe fn read(this: Value, rb_file_name: Value) -> Value {
                 },
             );
         }
-
-        rb_ary_push(rows, new_row);
     }
 
-    // Set instance variables
+    // Set other instance variables
     rb_iv_set(
         this,
         cstr("@width").as_ptr(),
@@ -181,12 +204,18 @@ unsafe fn read(this: Value, rb_file_name: Value) -> Value {
         rb_int2big(sheet.height() as isize),
     );
 
-    rb_iv_set(this, cstr("@rows").as_ptr(), rows);
-
     rb_iv_set(
         this,
         cstr("@file_name").as_ptr(),
         rb_utf8_str_new_cstr(rb_string_value_cstr(&rb_file_name)),
+    );
+
+    // Set the actual worksheet name from the workbook, not the parameter
+    let actual_worksheet_name = document.sheet_names()[worksheet_index].clone();
+    rb_iv_set(
+        this,
+        cstr("@worksheet_name").as_ptr(),
+        rb_utf8_str_new_cstr(cstr(&actual_worksheet_name).as_ptr()),
     );
 
     this
@@ -214,7 +243,7 @@ pub unsafe extern "C" fn Init_libfastsheet() {
         cstr("read!").as_ptr(),
         // Rust function as pointer to C function
         read as *const c_void,
-        1 as c_int,
+        2 as c_int, // Now accepts 2 parameters: filename and worksheet
     );
 }
 
