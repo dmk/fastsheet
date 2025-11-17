@@ -27,13 +27,23 @@ Open a sheet:
 ```ruby
 require 'fastsheet'
 
+# Open first worksheet (default)
 sheet = Fastsheet::Sheet.new('path/to/sheet.xlsx')
+
+# Open specific worksheet by index
+sheet = Fastsheet::Sheet.new('path/to/sheet.xlsx', worksheet: 1)
+
+# Open specific worksheet by name
+sheet = Fastsheet::Sheet.new('path/to/sheet.xlsx', worksheet: 'Sheet2')
 
 # number of columns
 sheet.width
 
 # number of rows
 sheet.height
+
+# worksheet name
+sheet.worksheet_name
 ```
 
 Get rows or columns:
