@@ -3,6 +3,12 @@
 require 'fiddle'
 
 module Fastsheet
+  # Error raised when a specified sheet is not found
+  class SheetNotFoundError < StandardError; end
+
+  # Error raised when a sheet index is out of range
+  class SheetIndexError < StandardError; end
+
   # Handles dynamic loading and initialization of the native extension.
   # Provides a stable handle to the loaded library and hides platform specifics.
   module Native
