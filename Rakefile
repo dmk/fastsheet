@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'logger'
+require 'bundler/gem_tasks'
 
 @logger = Logger.new($stdout)
 
