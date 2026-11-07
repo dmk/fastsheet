@@ -4,7 +4,7 @@ Fastest ruby gem for reading Excel documents.
 
 ## Installation
 
-**You should have Rust installed to build this gem.** Tested with Ruby 3.2+.
+**You need Rust 1.88 or newer to build this gem.** Tested with Ruby 3.2+.
 
 Add this line to your application's Gemfile:
 

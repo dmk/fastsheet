@@ -74,5 +74,19 @@ RSpec.describe Fastsheet::Sheet, :integration do
       file = build_temp_xlsx_serials([24_107.0], date1904: true)
       expect(described_class.new(file.path).row(0).first.to_i).to eq(0)
     end
+
+    it 'preserves the 1904 epoch when extended workbook properties are present' do
+      file = build_temp_xlsx_serials([24_107.0], date1904: true)
+      Zip::File.open(file.path) do |archive|
+        xml = archive.read('xl/workbook.xml')
+        extension = '<extLst><ext uri="{test}">' \
+                    '<x15:workbookPr xmlns:x15="http://schemas.microsoft.com/office/spreadsheetml/2010/11/main"/>' \
+                    '</ext></extLst>'
+        archive.get_output_stream('xl/workbook.xml') do |stream|
+          stream.write(xml.sub('</workbook>', "#{extension}</workbook>"))
+        end
+      end
+      expect(described_class.new(file.path).row(0).first).to eq(Time.utc(1970, 1, 1))
+    end
   end
 end
