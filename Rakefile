@@ -33,10 +33,16 @@ task 'spec:integration' => [:build] do
   sh 'INTEGRATION=1 bundle exec rspec --format documentation spec/integration'
 end
 
-desc 'Run tests (unit + integration)'
+desc 'Run Rust unit tests'
+task 'spec:rust' do
+  sh 'cargo test --locked --manifest-path ext/fastsheet/Cargo.toml'
+end
+
+desc 'Run tests (unit + integration + Rust)'
 task :test do
   Rake::Task['spec:unit'].invoke
   Rake::Task['spec:integration'].invoke
+  Rake::Task['spec:rust'].invoke
 end
 
 task default: [:test]

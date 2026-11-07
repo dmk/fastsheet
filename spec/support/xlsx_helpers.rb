@@ -21,6 +21,33 @@ module XlsxHelpers
     end
   end
 
+  def build_temp_xlsx_serials(values, date1904: false)
+    Tempfile.create(['fastsheet_dates', '.xlsx']).tap do |tmp|
+      tmp.close
+      serialize_serial_workbook(tmp.path, values, date1904)
+    end
+  ensure
+    Axlsx::Workbook.date1904 = false
+  end
+
+  def serialize_serial_workbook(path, values, date1904)
+    Axlsx::Package.new do |package|
+      workbook = package.workbook
+      workbook.date1904 = date1904
+      styles = serial_styles(workbook, values.length)
+      workbook.add_worksheet { |sheet| sheet.add_row values, style: styles }
+      package.serialize(path)
+    end
+  end
+
+  def serial_styles(workbook, count)
+    date_style = workbook.styles.add_style(format_code: 'yyyy-mm-dd hh:mm:ss.000')
+    duration_style = workbook.styles.add_style(format_code: '[h]:mm:ss')
+    Array.new(count, date_style).tap do |styles|
+      styles[-1] = duration_style if count > 1
+    end
+  end
+
   # Build a temporary XLSX file with multiple sheets
   def build_temp_xlsx_multi_sheet
     Tempfile.create(['fastsheet_multi_spec', '.xlsx']).tap do |tmp|
