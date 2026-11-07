@@ -82,11 +82,6 @@ RSpec.describe Fastsheet::Sheet do
   end
 
   describe 'class methods' do
-    before do
-      allow(described_class).to receive(:sheet_names).and_call_original
-      allow(described_class).to receive(:sheet_count).and_call_original
-    end
-
     it 'has sheet_names class method' do
       expect(described_class).to respond_to(:sheet_names)
     end

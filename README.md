@@ -128,8 +128,16 @@ The library automatically converts Excel data types:
 - Booleans (`true`/`false`)
 - Empty cells (as `nil`)
 - Error cells (as `nil`)
+- Numeric Excel dates and times (as Ruby `Time`, interpreted as UTC instants; display follows the local timezone)
+- Numeric Excel durations such as `[h]:mm:ss` (as seconds, `Float`)
+- ISO dates and durations (as strings)
 
-Dates and formulas returned as `nil`.
+Unrepresentable numeric dates return `nil`. Formula cells expose cached values when present;
+formula text and recalculation are not exposed.
+
+Sheet selectors are type-sensitive: integers select zero-based indexes, while strings
+select exact sheet names, including numeric names such as `"123"`. Invalid selector
+types raise `TypeError`; missing or unreadable files raise `IOError`.
 
 ## Contributing
 

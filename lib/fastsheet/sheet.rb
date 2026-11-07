@@ -9,8 +9,7 @@ module Fastsheet
                 :sheet_name, :sheet_index
 
     def initialize(file_name, options = {})
-      sheet_selector = normalize_sheet_selector(options[:sheet])
-      load_sheet_data(file_name, sheet_selector)
+      read!(file_name, options[:sheet])
       extract_header_if_requested(options[:header])
     end
 
@@ -39,29 +38,48 @@ module Fastsheet
       enumerator.each(&)
     end
 
+    def self.sheet_names(file_name)
+      result = native_sheet_names(validate_file_name(file_name))
+      raise IOError, result if result.is_a?(String)
+
+      result
+    end
+
+    def self.sheet_count(file_name)
+      sheet_names(file_name).length
+    end
+
+    def self.validate_file_name(file_name)
+      raise TypeError, 'file name must be a String' unless file_name.is_a?(String)
+      raise ArgumentError, 'file name contains a null byte' if file_name.include?("\0")
+
+      file_name
+    end
+    private_class_method :validate_file_name
+    private_class_method :native_sheet_names if respond_to?(:native_sheet_names)
+    private :read_native! if method_defined?(:read_native!)
+
+    def read!(file_name, selector = nil)
+      self.class.send(:validate_file_name, file_name)
+      selector = validate_selector(selector)
+      result = read_native!(file_name, selector.to_s, selector.is_a?(Integer))
+      return result unless result.is_a?(Array)
+
+      kind, message = result
+      error = { 'index' => SheetIndexError, 'name' => SheetNotFoundError }.fetch(kind, IOError)
+      raise error, message
+    end
+
     private
 
-    def normalize_sheet_selector(sheet)
-      return sheet.to_s if sheet.is_a?(Integer)
-
-      sheet
-    end
-
-    def load_sheet_data(file_name, sheet_selector)
-      read!(file_name, sheet_selector)
-    rescue RuntimeError => e
-      handle_sheet_loading_error(e)
-    end
-
-    def handle_sheet_loading_error(error)
-      case error.message
-      when /Sheet '(.+)' not found/
-        raise SheetNotFoundError, error.message
-      when /Sheet index (\d+) out of range/
-        raise SheetIndexError, error.message
-      else
-        raise
+    def validate_selector(selector)
+      return 0 if selector.nil?
+      unless selector.is_a?(String) || selector.is_a?(Integer)
+        raise TypeError, 'sheet must be an Integer index or String name'
       end
+      raise ArgumentError, 'sheet name contains a null byte' if selector.is_a?(String) && selector.include?("\0")
+
+      selector
     end
 
     def extract_header_if_requested(header_option)

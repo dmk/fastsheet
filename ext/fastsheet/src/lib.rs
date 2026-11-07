@@ -24,8 +24,6 @@ extern "C" {
 extern "C" {
     // Object class
     static rb_cObject: Value;
-    // RuntimeError class
-    static rb_eRuntimeError: Value;
 
     // Modules and classes
     fn rb_define_module(name: *const c_char) -> Value;
@@ -40,6 +38,9 @@ extern "C" {
     // Set instance variables
     fn rb_iv_set(object: Value, name: *const c_char, value: Value) -> Value;
 
+    fn rb_gc_register_address(address: *mut Value);
+    fn rb_gc_unregister_address(address: *mut Value);
+
     // Array
     fn rb_ary_new_capa(capa: c_long) -> Value;
     fn rb_ary_push(array: Value, elem: Value) -> Value;
@@ -49,13 +50,11 @@ extern "C" {
     fn rb_ll2inum(num: c_longlong) -> Value;
     fn rb_float_new(num: c_double) -> Value;
     fn rb_utf8_str_new_cstr(str: *const c_char) -> Value;
+    fn rb_utf8_str_new(str: *const c_char, len: c_long) -> Value;
     fn rb_time_new(sec: time_t, usec: c_long) -> Value;
 
     // Ruby string to C string
     fn rb_string_value_cstr(str: *const Value) -> *const c_char;
-
-    // Exception raising
-    fn rb_raise(exception: Value, fmt: *const c_char);
 }
 
 //
@@ -85,100 +84,62 @@ pub(crate) fn normalize_string_or_none(input: &str) -> Option<String> {
     }
 }
 
-// Convert Excel serial date (days since 1899-12-30 with 1900 leap-day bug)
-// into Unix timestamp seconds and microseconds.
-//
-// Excel's day 0 is 1899-12-30. Excel incorrectly treats 1900 as a leap year,
-// so all serials >= 60 are offset by +1 compared to the proleptic Gregorian.
-pub(crate) fn excel_serial_days_to_unix_seconds_usecs(days: f64) -> (i64, i64) {
-    let mut adjusted_days = days;
-    if adjusted_days >= 60.0 {
-        adjusted_days += 1.0;
-    }
-    let total_seconds = (adjusted_days - 25569.0) * 86400.0_f64;
-    let mut sec = total_seconds.trunc() as i64;
-    let mut usec = (total_seconds.fract() * 1_000_000.0).round() as i64;
-    if usec >= 1_000_000 {
-        // Carry into seconds if we rounded up
-        sec += 1;
-        usec -= 1_000_000;
-    } else if usec < 0 {
-        // Handle potential negative rounding edge cases
-        sec -= 1;
-        usec += 1_000_000;
-    }
-    (sec, usec)
+// Strings may contain NULs, so use the length-aware Ruby API.
+unsafe fn ruby_string(value: &str) -> Value {
+    rb_utf8_str_new(value.as_ptr().cast(), value.len() as c_long)
 }
 
-//
-// Functions to use in Ruby
-//
+// Return errors as data. Ruby raises only after Rust-owned resources are dropped.
+unsafe fn read_error(kind: &str, message: &str) -> Value {
+    let mut result = rb_ary_new_capa(2);
+    rb_gc_register_address(&mut result);
+    rb_ary_push(result, ruby_string(kind));
+    rb_ary_push(result, ruby_string(message));
+    rb_gc_unregister_address(&mut result);
+    result
+}
 
-// Read the sheet with optional sheet selector
-unsafe fn read(this: Value, rb_file_name: Value, rb_sheet_selector: Value) -> Value {
-    let mut document = open_workbook_auto(rstr(rb_file_name)).expect("Cannot open file!");
-
-    let sheet = if rb_sheet_selector == rb_shim_Qnil() {
-        // Default: open first worksheet
-        match document.worksheet_range_at(0) {
-            Some(Ok(range)) => range,
-            Some(Err(_)) => {
-                rb_raise(
-                    rb_eRuntimeError,
-                    cstr("Cannot read first worksheet").as_ptr(),
-                );
-                return rb_shim_Qnil(); // This line won't be reached, but needed for type checking
-            }
-            None => {
-                rb_raise(rb_eRuntimeError, cstr("No worksheets found").as_ptr());
-                return rb_shim_Qnil(); // This line won't be reached, but needed for type checking
-            }
-        }
-    } else {
-        let sheet_selector_str = rstr(rb_sheet_selector);
-
-        // Try to parse as integer first (sheet index)
-        if let Ok(index) = sheet_selector_str.parse::<usize>() {
-            match document.worksheet_range_at(index) {
-                Some(Ok(range)) => range,
-                Some(Err(_)) => {
-                    rb_raise(
-                        rb_eRuntimeError,
-                        cstr(&format!("Cannot read sheet at index {}", index)).as_ptr(),
-                    );
-                    return rb_shim_Qnil(); // This line won't be reached, but needed for type checking
-                }
-                None => {
-                    rb_raise(
-                        rb_eRuntimeError,
-                        cstr(&format!("Sheet index {} out of range", index)).as_ptr(),
-                    );
-                    return rb_shim_Qnil(); // This line won't be reached, but needed for type checking
-                }
-            }
+unsafe extern "C" fn read(
+    this: Value,
+    rb_file_name: Value,
+    rb_selector: Value,
+    rb_by_index: Value,
+) -> Value {
+    let file_name = rstr(rb_file_name);
+    let selector = rstr(rb_selector);
+    let parsed = (|| {
+        let mut document = open_workbook_auto(&file_name)
+            .map_err(|e| ("read", format!("Cannot open workbook: {}", e)))?;
+        let names = document.sheet_names();
+        let index = if rb_by_index == rb_shim_Qtrue() {
+            selector
+                .parse::<usize>()
+                .ok()
+                .filter(|&i| i < names.len())
+                .ok_or_else(|| ("index", format!("Sheet index {} out of range", selector)))?
         } else {
-            // Treat as sheet name
-            match document.worksheet_range(&sheet_selector_str) {
-                Ok(range) => range,
-                Err(_) => {
-                    rb_raise(
-                        rb_eRuntimeError,
-                        cstr(&format!(
-                            "Sheet '{}' not found or cannot be read",
-                            sheet_selector_str
-                        ))
-                        .as_ptr(),
-                    );
-                    return rb_shim_Qnil(); // This line won't be reached, but needed for type checking
-                }
-            }
-        }
+            names
+                .iter()
+                .position(|name| name == &selector)
+                .ok_or_else(|| ("name", format!("Sheet '{}' not found", selector)))?
+        };
+        let name = names[index].clone();
+        let sheet = document
+            .worksheet_range(&name)
+            .map_err(|e| ("read", format!("Cannot read sheet '{}': {}", name, e)))?;
+        Ok((sheet, name, index))
+    })();
+    let (sheet, name, index) = match parsed {
+        Ok(value) => value,
+        Err((kind, message)) => return read_error(kind, &message),
     };
 
     let rows = rb_ary_new_capa(sheet.height() as c_long);
+    rb_iv_set(this, cstr("@rows").as_ptr(), rows);
 
     for row in sheet.rows() {
         let new_row = rb_ary_new_capa(row.len() as c_long);
+        rb_ary_push(rows, new_row);
 
         for c in row.iter() {
             rb_ary_push(
@@ -198,28 +159,23 @@ unsafe fn read(this: Value, rb_file_name: Value, rb_sheet_selector: Value) -> Va
                     }
                     Data::String(s) => match normalize_string_or_none(s) {
                         None => rb_shim_Qnil(),
-                        Some(st) => rb_utf8_str_new_cstr(cstr(&st).as_ptr()),
+                        Some(st) => ruby_string(&st),
                     },
-                    Data::DateTime(dt) => {
-                        // Prefer calamine's parsed datetime when available.
-                        if let Some(ndt) = dt.as_datetime() {
-                            let ndt_utc = ndt.and_utc();
-                            let sec = ndt_utc.timestamp() as time_t;
-                            let usec = ndt_utc.timestamp_subsec_micros() as c_long;
-                            rb_time_new(sec, usec)
-                        } else {
-                            // Fallback to serial conversion.
-                            let (sec, usec) = excel_serial_days_to_unix_seconds_usecs(dt.as_f64());
-                            rb_time_new(sec as time_t, usec as c_long)
+                    Data::DateTime(dt) if dt.is_duration() => rb_float_new(dt.as_f64() * 86400.0),
+                    Data::DateTime(dt) => match dt.as_datetime() {
+                        Some(ndt) => {
+                            let utc = ndt.and_utc();
+                            rb_time_new(
+                                utc.timestamp() as time_t,
+                                utc.timestamp_subsec_micros() as c_long,
+                            )
                         }
-                    }
-                    Data::DateTimeIso(s) => rb_utf8_str_new_cstr(cstr(s).as_ptr()),
-                    Data::DurationIso(s) => rb_utf8_str_new_cstr(cstr(s).as_ptr()),
+                        None => rb_shim_Qnil(),
+                    },
+                    Data::DateTimeIso(s) | Data::DurationIso(s) => ruby_string(s),
                 },
             );
         }
-
-        rb_ary_push(rows, new_row);
     }
 
     // Set instance variables
@@ -243,77 +199,27 @@ unsafe fn read(this: Value, rb_file_name: Value, rb_sheet_selector: Value) -> Va
         rb_utf8_str_new_cstr(rb_string_value_cstr(&rb_file_name)),
     );
 
-    // Store sheet information
-    if rb_sheet_selector != rb_shim_Qnil() {
-        let sheet_selector_str = rstr(rb_sheet_selector);
-        if let Ok(index) = sheet_selector_str.parse::<usize>() {
-            rb_iv_set(
-                this,
-                cstr("@sheet_index").as_ptr(),
-                rb_int2big(index as isize),
-            );
-            // Get sheet name from document
-            let sheet_names: Vec<_> = document.sheet_names().to_vec();
-            if index < sheet_names.len() {
-                rb_iv_set(
-                    this,
-                    cstr("@sheet_name").as_ptr(),
-                    rb_utf8_str_new_cstr(cstr(&sheet_names[index]).as_ptr()),
-                );
-            }
-        } else {
-            rb_iv_set(
-                this,
-                cstr("@sheet_name").as_ptr(),
-                rb_utf8_str_new_cstr(cstr(&sheet_selector_str).as_ptr()),
-            );
-            // Find sheet index by name
-            let sheet_names: Vec<_> = document.sheet_names().to_vec();
-            if let Some(pos) = sheet_names
-                .iter()
-                .position(|name| name == &sheet_selector_str)
-            {
-                rb_iv_set(
-                    this,
-                    cstr("@sheet_index").as_ptr(),
-                    rb_int2big(pos as isize),
-                );
-            }
-        }
-    } else {
-        // Default to first sheet
-        rb_iv_set(this, cstr("@sheet_index").as_ptr(), rb_int2big(0));
-        let sheet_names: Vec<_> = document.sheet_names().to_vec();
-        if !sheet_names.is_empty() {
-            rb_iv_set(
-                this,
-                cstr("@sheet_name").as_ptr(),
-                rb_utf8_str_new_cstr(cstr(&sheet_names[0]).as_ptr()),
-            );
-        }
-    }
-
+    rb_iv_set(
+        this,
+        cstr("@sheet_index").as_ptr(),
+        rb_ll2inum(index as c_longlong),
+    );
+    rb_iv_set(this, cstr("@sheet_name").as_ptr(), ruby_string(&name));
     this
 }
 
-// Get sheet names from workbook
-unsafe fn sheet_names(_klass: Value, rb_file_name: Value) -> Value {
-    let document = open_workbook_auto(rstr(rb_file_name)).expect("Cannot open file!");
-    let sheet_names: Vec<_> = document.sheet_names().to_vec();
-
-    let rb_array = rb_ary_new_capa(sheet_names.len() as c_long);
-    for name in &sheet_names {
-        rb_ary_push(rb_array, rb_utf8_str_new_cstr(cstr(name).as_ptr()));
+unsafe extern "C" fn sheet_names(_klass: Value, rb_file_name: Value) -> Value {
+    let names = match open_workbook_auto(rstr(rb_file_name)) {
+        Ok(document) => document.sheet_names(),
+        Err(error) => return ruby_string(&format!("Cannot open workbook: {}", error)),
+    };
+    let mut result = rb_ary_new_capa(names.len() as c_long);
+    rb_gc_register_address(&mut result);
+    for name in names {
+        rb_ary_push(result, ruby_string(&name));
     }
-
-    rb_array
-}
-
-// Get sheet count from workbook
-unsafe fn sheet_count(_klass: Value, rb_file_name: Value) -> Value {
-    let document = open_workbook_auto(rstr(rb_file_name)).expect("Cannot open file!");
-    let count = document.sheet_names().len();
-    rb_int2big(count as isize)
+    rb_gc_unregister_address(&mut result);
+    result
 }
 
 // Init_libfastsheet symbol is an entrypoint for the lib
@@ -335,10 +241,10 @@ pub unsafe extern "C" fn Init_libfastsheet() {
 
     rb_define_method(
         Sheet,
-        cstr("read!").as_ptr(),
+        cstr("read_native!").as_ptr(),
         // Rust function as pointer to C function
         read as *const c_void,
-        2 as c_int,
+        3 as c_int,
     );
 
     // Class methods for sheet enumeration
@@ -353,49 +259,39 @@ pub unsafe extern "C" fn Init_libfastsheet() {
 
     rb_define_singleton_method(
         Sheet,
-        cstr("sheet_names").as_ptr(),
+        cstr("native_sheet_names").as_ptr(),
         sheet_names as *const c_void,
-        1 as c_int,
-    );
-
-    rb_define_singleton_method(
-        Sheet,
-        cstr("sheet_count").as_ptr(),
-        sheet_count as *const c_void,
         1 as c_int,
     );
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{excel_serial_days_to_unix_seconds_usecs, normalize_string_or_none};
+    use super::normalize_string_or_none;
+    use calamine::{ExcelDateTime, ExcelDateTimeType};
 
     #[test]
     fn normalize_string_or_none_trims_and_filters() {
         assert_eq!(normalize_string_or_none(""), None);
         assert_eq!(normalize_string_or_none("   \t\n"), None);
         assert_eq!(normalize_string_or_none("  foo  "), Some("foo".to_string()));
-        assert_eq!(normalize_string_or_none("bar"), Some("bar".to_string()));
     }
 
     #[test]
-    fn excel_serial_epoch_mapping() {
-        // 25569 -> 1970-01-01 00:00:00
-        let (sec, usec) = excel_serial_days_to_unix_seconds_usecs(25569.0);
-        assert_eq!(sec, 0);
-        assert_eq!(usec, 0);
-
-        // 25569.5 -> 1970-01-01 12:00:00
-        let (sec, usec) = excel_serial_days_to_unix_seconds_usecs(25569.5);
-        assert_eq!(sec, 12 * 3600);
-        assert_eq!(usec, 0);
-
-        // Check rounding behavior near microsecond boundaries
-        let (sec, usec) = excel_serial_days_to_unix_seconds_usecs(25569.000001);
-        assert!((86..=87).contains(&sec));
-        assert!(usec < 1_000_000);
-
-        // Verify 1900 leap-day bug adjustment does not panic
-        let _ = excel_serial_days_to_unix_seconds_usecs(60.0);
+    fn excel_epochs_and_fractional_seconds() {
+        for (serial, is_1904, seconds, millis) in [
+            (25569.0, false, 0, 0),
+            (25569.5, false, 43200, 0),
+            (24107.0, true, 0, 0),
+            (25569.000001, false, 0, 86),
+            (25568.5, false, -43200, 0),
+        ] {
+            let dt = ExcelDateTime::new(serial, ExcelDateTimeType::DateTime, is_1904)
+                .as_datetime()
+                .unwrap()
+                .and_utc();
+            assert_eq!(dt.timestamp(), seconds);
+            assert_eq!(dt.timestamp_subsec_millis(), millis);
+        }
     }
 }
