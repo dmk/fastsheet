@@ -48,6 +48,13 @@ module XlsxHelpers
     end
   end
 
+  def rewrite_xlsx_entry(path, entry)
+    Zip::File.open(path) do |archive|
+      content = yield archive.read(entry)
+      archive.get_output_stream(entry) { |stream| stream.write(content) }
+    end
+  end
+
   # Build a temporary XLSX file with multiple sheets
   def build_temp_xlsx_multi_sheet
     Tempfile.create(['fastsheet_multi_spec', '.xlsx']).tap do |tmp|

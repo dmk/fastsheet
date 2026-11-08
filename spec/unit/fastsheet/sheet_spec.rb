@@ -9,7 +9,7 @@ RSpec.describe Fastsheet::Sheet do
   before do
     allow(described_class).to receive(:new) do |*args|
       instance = described_class.allocate
-      allow(instance).to receive(:read!) do |_file_name = nil, _sheet_selector = nil|
+      allow(instance).to receive(:read!) do |_file_name = nil, _sheet_selector = nil, _options = {}|
         instance.instance_variable_set(:@rows, rows.map(&:dup))
         instance.instance_variable_set(:@height, rows.length)
         instance.instance_variable_set(:@width, rows.first.length)

@@ -139,6 +139,44 @@ Sheet selectors are type-sensitive: integers select zero-based indexes, while st
 select exact sheet names, including numeric names such as `"123"`. Invalid selector
 types raise `TypeError`; missing or unreadable files raise `IOError`.
 
+### Value Conversion Options
+
+Conversion options apply to all cells, including the extracted header. Defaults
+preserve the behavior described above.
+
+| Option | Default | Alternatives |
+| --- | --- | --- |
+| `dates` | `:time` | `:date` returns Ruby `Date`; `:excel_serial` returns the original numeric date/time serial |
+| `timezone` | `:local` | `:utc` returns `Time` objects displayed in UTC |
+| `errors` | `:nil` | `:string` returns Excel error text such as `"#DIV/0!"` or `"#N/A"` |
+| `strip_strings` | `true` | `false` preserves string whitespace supplied by the parser |
+| `blank_strings` | `:nil` | `:preserve` keeps empty strings after optional trimming |
+
+```ruby
+sheet = Fastsheet::Sheet.new('workbook.xlsx',
+                             dates: :date,
+                             errors: :string,
+                             strip_strings: false,
+                             blank_strings: :preserve)
+```
+
+Excel numeric dates contain no timezone. `timezone` controls display only: both
+settings interpret the spreadsheet clock as UTC. `dates: :date` uses that clock's
+calendar day, regardless of the local timezone, and discards the time of day.
+This explicitly converts all numeric date/time cells; it does not infer which
+cells are date-only. `timezone` has no effect with `:date` or `:excel_serial`.
+
+Numeric durations remain seconds under every date policy. ISO date and duration
+strings remain strings. Raw serial mode preserves otherwise unrepresentable dates
+and Excel's fictional leap-day serial `60`; `Time` and `Date` conversion map it to
+February 28, 1900. A raw serial must be interpreted using its workbook's 1900 or
+1904 date system.
+
+With `strip_strings: false`, whitespace-only strings remain strings even when
+`blank_strings: :nil`. Missing cells always remain `nil`. Error text in `:string`
+mode has the same Ruby type as a literal string containing that text. Invalid
+conversion option values raise `ArgumentError` before the file is opened.
+
 ## Contributing
 
 Bug reports and pull requests are welcome on GitHub at https://github.com/dkkoval/fastsheet.

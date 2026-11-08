@@ -44,6 +44,7 @@ extern "C" {
     // Array
     fn rb_ary_new_capa(capa: c_long) -> Value;
     fn rb_ary_push(array: Value, elem: Value) -> Value;
+    fn rb_ary_entry(array: Value, index: c_long) -> Value;
 
     // C data to Ruby
     fn rb_int2big(num: isize) -> Value;
@@ -74,13 +75,17 @@ pub fn rstr(string: Value) -> String {
     }
 }
 
-// Returns None if the string is empty or whitespace-only after trimming.
-pub(crate) fn normalize_string_or_none(input: &str) -> Option<String> {
-    let trimmed = input.trim();
-    if trimmed.is_empty() {
+// Apply normalization without allocating a temporary Rust string.
+pub(crate) fn normalize_string_or_none(
+    input: &str,
+    strip: bool,
+    preserve_blank: bool,
+) -> Option<&str> {
+    let value = if strip { input.trim() } else { input };
+    if value.is_empty() && !preserve_blank {
         None
     } else {
-        Some(trimmed.to_string())
+        Some(value)
     }
 }
 
@@ -104,9 +109,15 @@ unsafe extern "C" fn read(
     rb_file_name: Value,
     rb_selector: Value,
     rb_by_index: Value,
+    rb_options: Value,
 ) -> Value {
     let file_name = rstr(rb_file_name);
     let selector = rstr(rb_selector);
+    // The Ruby wrapper validates these flags before calling this private method.
+    let raw_dates = rb_ary_entry(rb_options, 0) == rb_shim_Qtrue();
+    let preserve_errors = rb_ary_entry(rb_options, 1) == rb_shim_Qtrue();
+    let strip_strings = rb_ary_entry(rb_options, 2) == rb_shim_Qtrue();
+    let preserve_blank = rb_ary_entry(rb_options, 3) == rb_shim_Qtrue();
     let parsed = (|| {
         let mut document = open_workbook_auto(&file_name)
             .map_err(|e| ("read", format!("Cannot open workbook: {}", e)))?;
@@ -145,7 +156,7 @@ unsafe extern "C" fn read(
             rb_ary_push(
                 new_row,
                 match c {
-                    // vba error
+                    Data::Error(error) if preserve_errors => ruby_string(&error.to_string()),
                     Data::Error(_) => rb_shim_Qnil(),
                     Data::Empty => rb_shim_Qnil(),
                     Data::Float(f) => rb_float_new(*f as c_double),
@@ -157,11 +168,14 @@ unsafe extern "C" fn read(
                             rb_shim_Qfalse()
                         }
                     }
-                    Data::String(s) => match normalize_string_or_none(s) {
-                        None => rb_shim_Qnil(),
-                        Some(st) => ruby_string(&st),
-                    },
+                    Data::String(s) => {
+                        match normalize_string_or_none(s, strip_strings, preserve_blank) {
+                            None => rb_shim_Qnil(),
+                            Some(st) => ruby_string(st),
+                        }
+                    }
                     Data::DateTime(dt) if dt.is_duration() => rb_float_new(dt.as_f64() * 86400.0),
+                    Data::DateTime(dt) if raw_dates => rb_float_new(dt.as_f64()),
                     Data::DateTime(dt) => match dt.as_datetime() {
                         Some(ndt) => {
                             let utc = ndt.and_utc();
@@ -244,7 +258,7 @@ pub unsafe extern "C" fn Init_libfastsheet() {
         cstr("read_native!").as_ptr(),
         // Rust function as pointer to C function
         read as *const c_void,
-        3 as c_int,
+        4 as c_int,
     );
 
     // Class methods for sheet enumeration
@@ -272,9 +286,25 @@ mod tests {
 
     #[test]
     fn normalize_string_or_none_trims_and_filters() {
-        assert_eq!(normalize_string_or_none(""), None);
-        assert_eq!(normalize_string_or_none("   \t\n"), None);
-        assert_eq!(normalize_string_or_none("  foo  "), Some("foo".to_string()));
+        assert_eq!(normalize_string_or_none("", true, false), None);
+        assert_eq!(normalize_string_or_none("   \t\n", true, false), None);
+        assert_eq!(
+            normalize_string_or_none("  foo  ", true, false),
+            Some("foo")
+        );
+    }
+
+    #[test]
+    fn normalization_preserves_requested_strings() {
+        assert_eq!(
+            normalize_string_or_none("  foo  ", false, false),
+            Some("  foo  ")
+        );
+        assert_eq!(normalize_string_or_none(" \t ", false, false), Some(" \t "));
+        assert_eq!(normalize_string_or_none("", false, false), None);
+        assert_eq!(normalize_string_or_none(" \t ", true, true), Some(""));
+        assert_eq!(normalize_string_or_none("", false, true), Some(""));
+        assert_eq!(normalize_string_or_none("a\0b", false, true), Some("a\0b"));
     }
 
     #[test]
