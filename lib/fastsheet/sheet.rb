@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative 'value_options'
+
 module Fastsheet
   # Represents a parsed spreadsheet and provides row/column enumeration.
   class Sheet
@@ -9,7 +11,7 @@ module Fastsheet
                 :sheet_name, :sheet_index
 
     def initialize(file_name, options = {})
-      read!(file_name, options[:sheet])
+      read!(file_name, options[:sheet], options)
       extract_header_if_requested(options[:header])
     end
 
@@ -59,18 +61,23 @@ module Fastsheet
     private_class_method :native_sheet_names if respond_to?(:native_sheet_names)
     private :read_native! if method_defined?(:read_native!)
 
-    def read!(file_name, selector = nil)
+    def read!(file_name, selector = nil, options = {})
       self.class.send(:validate_file_name, file_name)
       selector = validate_selector(selector)
-      result = read_native!(file_name, selector.to_s, selector.is_a?(Integer))
-      return result unless result.is_a?(Array)
+      policy = ValueOptions.new(options)
+      result = read_native!(file_name, selector.to_s, selector.is_a?(Integer), policy.native_arguments)
+      raise_read_error(result) if result.is_a?(Array)
+      policy.convert_times!(@rows)
+      result
+    end
 
+    private
+
+    def raise_read_error(result)
       kind, message = result
       error = { 'index' => SheetIndexError, 'name' => SheetNotFoundError }.fetch(kind, IOError)
       raise error, message
     end
-
-    private
 
     def validate_selector(selector)
       return 0 if selector.nil?
